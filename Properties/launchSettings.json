@@ -1,0 +1,13 @@
+﻿{
+  "profiles": {
+    "TerrariaLauncher.Services.TradingSystem": {
+      "commandName": "Project",
+      "dotnetRunMessages": "true",
+      "launchBrowser": false,
+      "applicationUrl": "http://localhost:3103",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    }
+  }
+}

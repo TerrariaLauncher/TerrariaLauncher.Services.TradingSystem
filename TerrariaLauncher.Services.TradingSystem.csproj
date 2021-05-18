@@ -1,0 +1,34 @@
+﻿<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net5.0</TargetFramework>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Protobuf Include="..\TerrariaLauncher.Protos\services\trading_system\**\*.proto" ProtoRoot="..\TerrariaLauncher.Protos" GrpcServices="Server">
+      <Link>TerrariaLauncher.Protos\services\trading_system\%(RecursiveDir)%(Filename)%(Extension)</Link>
+    </Protobuf>
+    <Protobuf Include="..\TerrariaLauncher.Protos\services\instance_gateway\**\*.proto" ProtoRoot="..\TerrariaLauncher.Protos" GrpcServices="Client">
+      <Link>TerrariaLauncher.Protos\services\instance_gateway\%(RecursiveDir)%(Filename)%(Extension)</Link>
+    </Protobuf>
+    <Protobuf Include="..\TerrariaLauncher.Protos\instance_plugins\instance_management\**\*.proto" ProtoRoot="..\TerrariaLauncher.Protos" GrpcServices="None">
+      <Link>TerrariaLauncher.Protos\instance_plugins\tshock_management\%(RecursiveDir)%(Filename)%(Extension)</Link>
+    </Protobuf>
+    <Protobuf Include="..\TerrariaLauncher.Protos\*.proto" ProtoRoot="..\TerrariaLauncher.Protos" GrpcServices="None">
+      <Link>TerrariaLauncher.Protos\%(RecursiveDir)%(Filename)%(Extension)</Link>
+    </Protobuf>
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Grpc.AspNetCore" Version="2.34.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Folder Include="DomainObjects\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\TerrariaLauncher.Commons\TerrariaLauncher.Commons.csproj" />
+  </ItemGroup>
+
+</Project>
