@@ -13,7 +13,7 @@ namespace TerrariaLauncher.Services.TradingSystem.GrpcServices
     {
         private RegisteredInstanceUserQueryHandler registeredInstanceUserQueryHandler;
         private RegisteredInstanceUserCommandHandler registeredInstanceUserCommandHandler;
-        private TerrariaLauncher.Protos.Services.InstanceGateway.InstanceUserManagement.InstanceUserManagementClient tShockUserManagementClient;
+        private TerrariaLauncher.Protos.Services.InstanceGateway.InstanceUserManagement.InstanceUserManagementClient instanceUserManagementClient;
 
         public RegisteredInstanceUserService(
             RegisteredInstanceUserQueryHandler registeredInstanceUserQueryHandler,
@@ -22,48 +22,138 @@ namespace TerrariaLauncher.Services.TradingSystem.GrpcServices
         {
             this.registeredInstanceUserQueryHandler = registeredInstanceUserQueryHandler;
             this.registeredInstanceUserCommandHandler = registeredInstanceUserCommandHandler;
-            this.tShockUserManagementClient = tShockUserManagementClient;
+            this.instanceUserManagementClient = tShockUserManagementClient;
+        }
+
+        public override async Task<CheckIfInstanceUserIsRegisteredResponse> CheckIfInstanceUserIsRegistered(CheckIfInstanceUserIsRegisteredRequest request, ServerCallContext context)
+        {
+            var getInstanceUserRequest = new Protos.Services.InstanceGateway.GetUserRequest()
+            {
+                InstanceId = request.InstanceId,
+                Payload = new Protos.InstancePlugins.InstanceManagement.GetUserRequest()
+            };
+            switch (request.IdentityCase)
+            {
+                case CheckIfInstanceUserIsRegisteredRequest.IdentityOneofCase.InstanceUserId:
+                    getInstanceUserRequest.Payload.Id = request.InstanceUserId;
+                    break;
+                case CheckIfInstanceUserIsRegisteredRequest.IdentityOneofCase.InstanceUserName:
+                    getInstanceUserRequest.Payload.Name = request.InstanceUserName;
+                    break;
+                default:
+                    throw new RpcException(new Status(StatusCode.InvalidArgument, "Instance user identity is not provided."));
+            }
+            var getInstanceUserResponse = await this.instanceUserManagementClient.GetUserAsync(getInstanceUserRequest, cancellationToken: context.CancellationToken);
+            var registration = await this.registeredInstanceUserQueryHandler.Handle(new Database.Queries.GetRegisteredInstanceUserQueryAsync()
+            {
+                InstanceId = request.InstanceId,
+                InstanceUserId = getInstanceUserResponse.Id
+            }, cancellationToken: context.CancellationToken);
+
+            var response = new CheckIfInstanceUserIsRegisteredResponse()
+            {
+                InstanceUser = new InstanceUser()
+                {
+                    Id = getInstanceUserResponse.Id,
+                    Name = getInstanceUserResponse.Name,
+                    Group = getInstanceUserResponse.Group
+                }
+            };
+            if (registration is null)
+            {
+                response.IsRegistered = false;
+                response.InstanceId = request.InstanceId;
+                return response;
+            }
+
+            response.IsRegistered = true;
+            response.UserId = registration.UserId;
+            response.InstanceId = registration.InstanceId;
+            return response;
+        }
+
+        public override async Task<GetRegisteredInstanceUserResponse> GetRegisteredInstanceUser(GetRegisteredInstanceUserRequest request, ServerCallContext context)
+        {
+            var registration = await this.registeredInstanceUserQueryHandler.Handle(new Database.Queries.GetRegisteredInstanceUserQueryAsync()
+            {
+                InstanceId = request.InstanceId,
+                InstanceUserId = request.InstanceUserId
+            }, context.CancellationToken);
+            if (registration is null)
+            {
+                throw new RpcException(new Status(StatusCode.NotFound, "Could not find registered instance user."));
+            }
+
+
+            var getUserCall = this.instanceUserManagementClient.GetUserAsync(new Protos.Services.InstanceGateway.GetUserRequest()
+            {
+                InstanceId = registration.InstanceId,
+                Payload = new Protos.InstancePlugins.InstanceManagement.GetUserRequest()
+                {
+                    Id = registration.InstanceUserId
+                }
+            }, cancellationToken: context.CancellationToken);
+            using (getUserCall)
+            {
+                var getUserResponse = await getUserCall.ResponseAsync.ConfigureAwait(false);
+                return new GetRegisteredInstanceUserResponse()
+                {
+                    UserId = registration.UserId,
+                    InstanceId = registration.InstanceId,
+                    InstanceUser = new InstanceUser()
+                    {
+                        Id = getUserResponse.Id,
+                        Name = getUserResponse.Name,
+                        Group = getUserResponse.Group
+                    }
+                };
+            }
         }
 
         public override async Task<GetRegisteredInstanceUsersResponse> GetRegisteredInstanceUsers(GetRegisteredInstanceUsersRequest request, ServerCallContext context)
         {
-            var response = new GetRegisteredInstanceUsersResponse();
+            var response = new GetRegisteredInstanceUsersResponse()
+            {
+                UserId = request.UserId,
+                InstanceId = request.InstanceId
+            };
+
             var query = new Database.Queries.GetRegisteredInstanceUsersQueryAsync()
             {
                 InstanceId = request.InstanceId,
                 UserId = request.UserId
             };
-            var characters = registeredInstanceUserQueryHandler.Handle(query, context.CancellationToken);
+            var registrations = registeredInstanceUserQueryHandler.Handle(query, context.CancellationToken);
 
-            await foreach (var character in characters.ConfigureAwait(false))
+            await foreach (var registration in registrations.ConfigureAwait(false))
             {
-                using (var getUserCall = tShockUserManagementClient.GetUserAsync(new Protos.Services.InstanceGateway.GetUserRequest()
+                var getUserCall = instanceUserManagementClient.GetUserAsync(new Protos.Services.InstanceGateway.GetUserRequest()
                 {
-                    InstanceId = character.InstanceId,
+                    InstanceId = registration.InstanceId,
                     Payload = new Protos.InstancePlugins.InstanceManagement.GetUserRequest()
                     {
-                        Id = character.InstanceUserId
+                        Id = registration.InstanceUserId
                     }
-                }, cancellationToken: context.CancellationToken))
+                }, cancellationToken: context.CancellationToken);
+                using (getUserCall)
                 {
                     var getUserResponse = await getUserCall.ResponseAsync.ConfigureAwait(false);
-                    response.RegisteredInstanceUsers.Add(new RegisteredInstanceUser()
+                    response.InstanceUsers.Add(new InstanceUser()
                     {
-                        InstanceId = character.InstanceId,
-                        InstanceUserId = character.InstanceUserId,
-                        InstanceUserName = getUserResponse.Name,
-                        UserId = character.UserId
+                        Id = getUserResponse.Id,
+                        Name = getUserResponse.Name,
+                        Group = getUserResponse.Group
                     });
                 }
             }
             return response;
         }
 
-        public override async Task<CreateInstanceUserResponse> CreateInstanceUser(CreateInstanceUserRequest request, ServerCallContext context)
+        public override async Task<RegisterNewInstanceUserResponse> RegisterNewInstanceUser(RegisterNewInstanceUserRequest request, ServerCallContext context)
         {
-            var createUserResponse = await this.tShockUserManagementClient.CreateUserAsync(new Protos.Services.InstanceGateway.CreateUserRequest()
+            var createUserResponse = await this.instanceUserManagementClient.CreateUserAsync(new Protos.Services.InstanceGateway.CreateUserRequest()
             {
-                InstanceId = request.Instance,
+                InstanceId = request.InstanceId,
                 Payload = new Protos.InstancePlugins.InstanceManagement.CreateUserRequest()
                 {
                     Name = request.InstanceUserName,
@@ -71,17 +161,29 @@ namespace TerrariaLauncher.Services.TradingSystem.GrpcServices
                 }
             }, cancellationToken: context.CancellationToken);
 
-            return new CreateInstanceUserResponse()
+            await this.registeredInstanceUserCommandHandler.Handle(new Database.Commands.RegisterInstanceUserCommandAsync()
             {
-                InstanceUserId = createUserResponse.Id,
-                InstanceUserName = createUserResponse.Name,
-                InstanceUserGroup = createUserResponse.Group
+                UserId = request.UserId,
+                InstanceId = request.InstanceId,
+                InstanceUserId = createUserResponse.Id
+            }, context.CancellationToken);
+
+            return new RegisterNewInstanceUserResponse()
+            {
+                UserId = request.UserId,
+                InstanceId = request.InstanceId,
+                InstanceUser = new InstanceUser()
+                {
+                    Id = createUserResponse.Id,
+                    Name = createUserResponse.Name,
+                    Group = createUserResponse.Group
+                }
             };
         }
 
-        public override async Task<RegisterInstanceUserResponse> RegisterInstanceUser(RegisterInstanceUserRequest request, ServerCallContext context)
+        public override async Task<RegisterExistingInstanceUserResponse> RegisterExistingInstanceUser(RegisterExistingInstanceUserRequest request, ServerCallContext context)
         {
-            var getTShockUserResponse = await this.tShockUserManagementClient.GetUserAsync(new Protos.Services.InstanceGateway.GetUserRequest()
+            var getTShockUserResponse = await this.instanceUserManagementClient.GetUserAsync(new Protos.Services.InstanceGateway.GetUserRequest()
             {
                 InstanceId = request.InstanceId,
                 Payload = new Protos.InstancePlugins.InstanceManagement.GetUserRequest()
@@ -89,7 +191,7 @@ namespace TerrariaLauncher.Services.TradingSystem.GrpcServices
                     Name = request.InstanceUserName
                 }
             }, cancellationToken: context.CancellationToken);
-            var verifyPasswordResponse = await this.tShockUserManagementClient.VerifyUserPasswordAsync(new Protos.Services.InstanceGateway.VerifyUserPasswordRequest()
+            var verifyPasswordResponse = await this.instanceUserManagementClient.VerifyUserPasswordAsync(new Protos.Services.InstanceGateway.VerifyUserPasswordRequest()
             {
                 InstanceId = request.InstanceId,
                 Payload = new Protos.InstancePlugins.InstanceManagement.VerifyUserPasswordRequest()
@@ -104,36 +206,35 @@ namespace TerrariaLauncher.Services.TradingSystem.GrpcServices
                 throw new RpcException(new Status(StatusCode.FailedPrecondition, "TShock user password is not valid."));
             }
 
-            await this.registeredInstanceUserCommandHandler.Handle(new Database.Commands.AttachCharacterCommandAsync()
+            await this.registeredInstanceUserCommandHandler.Handle(new Database.Commands.RegisterInstanceUserCommandAsync()
             {
                 InstanceId = request.InstanceId,
                 InstanceUserId = getTShockUserResponse.Id,
                 UserId = request.UserId
             }, context.CancellationToken);
 
-            return new RegisterInstanceUserResponse()
+            return new RegisterExistingInstanceUserResponse()
             {
-                
+
             };
         }
 
         public override async Task<DeregisterInstanceUserResponse> DeregisterInstanceUser(DeregisterInstanceUserRequest request, ServerCallContext context)
         {
-            var isDeleted = await this.registeredInstanceUserCommandHandler.Handle(new Database.Commands.DettachCharacterCommandAsync()
+            var isDeleted = await this.registeredInstanceUserCommandHandler.Handle(new Database.Commands.DeregisterInstanceUserCommandAsync()
             {
                 InstanceId = request.InstanceId,
-                InstanceUserId = request.InstanceUserId,
-                UserId = request.UserId
+                InstanceUserId = request.InstanceUserId
             });
-            
+
             if (!isDeleted)
             {
-                throw new RpcException(new Status(StatusCode.NotFound, "Could not find the character in the user characters."));
+                throw new RpcException(new Status(StatusCode.NotFound, "User had not registered the instance user."));
             }
 
             return new DeregisterInstanceUserResponse()
             {
-                
+
             };
         }
     }

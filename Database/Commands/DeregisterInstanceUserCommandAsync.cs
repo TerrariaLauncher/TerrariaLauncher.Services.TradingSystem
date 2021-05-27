@@ -5,9 +5,8 @@ using System.Threading.Tasks;
 
 namespace TerrariaLauncher.Services.TradingSystem.Database.Commands
 {
-    public class AttachCharacterCommandAsync
+    public class DeregisterInstanceUserCommandAsync
     {
-        public int UserId { get; set; }
         public int InstanceId { get; set; }
         public int InstanceUserId { get; set; }
     }

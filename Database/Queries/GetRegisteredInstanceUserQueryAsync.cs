@@ -3,11 +3,10 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 
-namespace TerrariaLauncher.Services.TradingSystem.Database.Commands
+namespace TerrariaLauncher.Services.TradingSystem.Database.Queries
 {
-    public class DettachCharacterCommandAsync
+    public class GetRegisteredInstanceUserQueryAsync
     {
-        public int UserId { get; set; }
         public int InstanceId { get; set; }
         public int InstanceUserId { get; set; }
     }

@@ -19,31 +19,31 @@ namespace TerrariaLauncher.Services.TradingSystem.Database.Commands.Handlers
             this.unitOfWorkFactory = unitOfWorkFactory;
         }
 
-        public async Task Handle(AttachCharacterCommandAsync command, CancellationToken cancellationToken = default)
+        public async Task Handle(RegisterInstanceUserCommandAsync command, CancellationToken cancellationToken = default)
         {
             var unitOfWork = await this.unitOfWorkFactory.CreateAsync(cancellationToken).ConfigureAwait(false);
             await using (unitOfWork.ConfigureAwait(false))
             {
-                await unitOfWork.RunCommandHandler(new AttachCharacterCommandHandler(command), cancellationToken);
+                await unitOfWork.RunCommandHandler(new RegisterInstanceUserCommandHandler(command), cancellationToken);
             }
         }
 
-        public async Task<bool> Handle(DettachCharacterCommandAsync command, CancellationToken cancellationToken = default)
+        public async Task<bool> Handle(DeregisterInstanceUserCommandAsync command, CancellationToken cancellationToken = default)
         {
             var unitOfWork = await this.unitOfWorkFactory.CreateAsync(cancellationToken).ConfigureAwait(false);
             await using (unitOfWork.ConfigureAwait(false))
             {
-                return await unitOfWork.RunCommandHandler(new DettachCharacterCommandHandler(command), cancellationToken);
+                return await unitOfWork.RunCommandHandler(new DeregisterInstanceUserCommandHandler(command), cancellationToken);
             }
         }
 
-        private class AttachCharacterCommandHandler : ICommandHandlerAsync
+        private class RegisterInstanceUserCommandHandler : ICommandHandlerAsync
         {
             public bool RequiredTransaction => false;
 
-            private AttachCharacterCommandAsync command;
+            private RegisterInstanceUserCommandAsync command;
 
-            public AttachCharacterCommandHandler(AttachCharacterCommandAsync command)
+            public RegisterInstanceUserCommandHandler(RegisterInstanceUserCommandAsync command)
             {
                 this.command = command;
             }
@@ -54,7 +54,7 @@ namespace TerrariaLauncher.Services.TradingSystem.Database.Commands.Handlers
                 await using (command.ConfigureAwait(false))
                 {
                     command.Transaction = transaction;
-                    command.CommandText = "INSERT INTO characters (instanceId, instanceUserId, userId) VALUES (@instanceId, @instanceUserId, @userId)";
+                    command.CommandText = "INSERT INTO registeredInstanceUsers (instanceId, instanceUserId, userId) VALUES (@instanceId, @instanceUserId, @userId)";
                     command.AddParameterWithValue("instanceId", this.command.InstanceId);
                     command.AddParameterWithValue("instanceUserId", this.command.InstanceUserId);
                     command.AddParameterWithValue("userId", this.command.UserId);
@@ -63,13 +63,13 @@ namespace TerrariaLauncher.Services.TradingSystem.Database.Commands.Handlers
             }
         }
 
-        private class DettachCharacterCommandHandler : ICommandHandlerAsync<bool>
+        private class DeregisterInstanceUserCommandHandler : ICommandHandlerAsync<bool>
         {
             public bool RequiredTransaction => false;
 
-            private DettachCharacterCommandAsync command;
+            private DeregisterInstanceUserCommandAsync command;
 
-            public DettachCharacterCommandHandler(DettachCharacterCommandAsync command)
+            public DeregisterInstanceUserCommandHandler(DeregisterInstanceUserCommandAsync command)
             {
                 this.command = command;
             }
@@ -80,9 +80,10 @@ namespace TerrariaLauncher.Services.TradingSystem.Database.Commands.Handlers
                 await using (command.ConfigureAwait(false))
                 {
                     command.Transaction = transaction;
-                    command.CommandText = "DELETE FROM characters WHERE instanceId = @instanceId AND instanceUserId = @instanceUserId AND userId = @userId";
+                    command.CommandText = "UPDATE registeredInstanceUsers SET isDeleted = @isDeleted WHERE instanceId = @instanceId AND instanceUserId = @instanceUserId";
                     command.AddParameterWithValue("instanceId", this.command.InstanceId);
                     command.AddParameterWithValue("instanceUserId", this.command.InstanceUserId);
+                    command.AddParameterWithValue("isDeleted", 1);
 
                     var numChanges = await command.ExecuteNonQueryAsync(cancellationToken);
                     return numChanges > 0;
